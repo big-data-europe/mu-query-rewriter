@@ -148,7 +148,7 @@ The property paths `*`, `+` and `?` are constrained identically to the correspon
 
 ## Writing Plugins
 
-The [mu-query-writer-sandbox](https://github.com/nathanielrb/mu-query-rewriter-sandbox) provides a UI for writing and testing Query Rewriter plugins. The [graph-acl-basics](https://github.com/nathanielrb/graph-acl-basics/) repository provides a full working example for experimentation.
+The [mu-query-writer-sandbox](https://github.com/big-data-europe/mu-query-rewriter-sandbox) provides a UI for writing and testing Query Rewriter plugins. The [graph-acl-basics](https://github.com/big-data-europe/graph-acl-basics/) repository provides a full working example for experimentation.
 
 This section describes how to write plugins directly in Chicken Scheme. 
 
