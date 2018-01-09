@@ -12,15 +12,15 @@
         (log-message "Virtuoso error: ~A" exn)
         (log-message "~A~%" (condition->list exn))
         (when body
-              (log-message "~%==Virtuoso Error==~% ~A ~%" body))
+              (error-message "~%==Virtuoso Error==~% ~A ~%" body))
         (when response
-              (log-message "~%==Reason==:~%~A~%" (response-reason response)))
+              (error-message "~%==Reason==:~%~A~%" (response-reason response)))
         (abort 'virtuoso-error))
       (abort exn)))
 
 (define (rewriting-error exn)
-  (log-message "~%==Rewriting Error (~A)==~%" (logkey)) 
-  (log-message "~%~A~%" ((condition-property-accessor 'exn 'message) exn))
+  (error-message "~%==Rewriting Error (~A)==~%" (logkey)) 
+  (error-message "~%~A~%" ((condition-property-accessor 'exn 'message) exn))
   (print-error-message exn (current-error-port))
   (print-call-chain (current-error-port))
   (abort exn))

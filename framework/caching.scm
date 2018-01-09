@@ -5,6 +5,9 @@
   (when (*debug-logging?*)
     (apply format (current-error-port) str args)))
 
+(define (error-message str #!rest args)
+  (apply format (current-error-port) str args))
+
 (define *query-forms* (make-hash-table))
 
 (define *cache-mailbox* (make-mailbox))
