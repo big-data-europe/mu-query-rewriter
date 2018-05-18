@@ -265,7 +265,7 @@
         (format #t (conc "(define-constraint  ~%"
                          (if write-constraint-string
                              "  'read \" ~%"
-                             "  'read/write ~%")
+                             "  'read/write \" ~%")
                          read-constraint-string
                          "\")~%~%"))
         
