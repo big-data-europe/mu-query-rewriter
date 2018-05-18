@@ -217,17 +217,18 @@
                                           accum))))))))
 
 (define (intersect-alists #!rest alists)
-  (if (<= (length alists) 1) (car alists)
-      (let loop ((alists (cdr alists)) (accum (car alists)))
-        (if (null? alists) accum
-            (let inner ((alist (car alists)) (accum accum))
-              (if (null? alist) (loop (cdr alists) accum)
-                  (let ((kv (car alist)))
-                    (inner (cdr alist)
-                           (alist-update-proc (car kv) 
-                                              (lambda (current)
-                                                (lset-intersection equal? (or current '()) (cdr kv)))
-                                              accum)))))))))
+  (cond ((null? alists) '())
+        ((= (length alists) 1) (car alists))
+        (else (let loop ((alists (cdr alists)) (accum (car alists)))
+                (if (null? alists) accum
+                    (let inner ((alist (car alists)) (accum accum))
+                      (if (null? alist) (loop (cdr alists) accum)
+                          (let ((kv (car alist)))
+                            (inner (cdr alist)
+                                   (alist-update-proc (car kv) 
+                                                      (lambda (current)
+                                                        (lset-intersection equal? (or current '()) (cdr kv)))
+                                                      accum))))))))))
 
 (define (error-condition message block)
   (abort
