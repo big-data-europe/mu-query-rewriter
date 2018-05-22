@@ -216,20 +216,26 @@
                                             (append-unique (or current '()) (cdr kv)))
                                           accum))))))))
 
-(define (intersect-alists #!rest alists)
-  (cond ((null? alists) '())
-        ((= (length alists) 1) (car alists))
-        (else (let loop ((alists (cdr alists)) (accum (car alists)))
-                (if (null? alists) accum
-                    (let inner ((alist (car alists)) (accum accum))
-                      (if (null? alist) (loop (cdr alists) accum)
-                          (let ((kv (car alist)))
-                            (inner (cdr alist)
-                                   (alist-update-proc (car kv) 
-                                                      (lambda (current)
-                                                        (lset-intersection equal? (or current '()) (cdr kv)))
-                                                      accum))))))))))
+(define (key< . args)
+  (apply string<? (map (compose symbol->string car) args)))
 
+(define (intersect-sorted-alists a b)
+  (let loop ((a a) (b b) (accum '()))
+    (cond ((or (null? a) (null? b)) (reverse accum))
+          ((key< (car b) (car a)) (loop a (cdr b) accum))
+          ((key< (car a) (car b)) (loop (cdr a) b accum))
+          (else (loop (cdr a) (cdr b) (cons `(,(caar a) ,@(lset-intersection equal? (cdar a) (cdar b)))
+                                            accum))))))
+    
+;; intersection of alists, whose values must all be lists
+;; '((a 4) (b 5)) '((a 3 4 5)) => '((a 4))
+;; probably very inneficient, but here the lists will never be very long
+(define (intersect-alists . alists)
+  (if (null? alists) '()
+      (fold intersect-sorted-alists
+            (sort (car alists) key<)
+            (map (cute sort <> key<) (cdr alists)))))
+ 
 (define (error-condition message block)
   (abort
    (make-property-condition
@@ -345,8 +351,13 @@
             (else (cons `(*store* . ,merged-stores)
                         (proc quads)))))))
   
+(define (cdr/safe elt) (if (null? elt) '() (cdr elt)))
+
+(define (car/safe elt) (if (null? elt) '() (car elt)))
+
 (define (intersect-stores rw proc)
-  (let ((stores (map cdr (filter pair? (map car (filter pair? (map (cut filter store? <>) rw))))))
+  ;; (let ((stores (map cdr (filter pair? (map car (filter pair? (map (cut filter store? <>) rw))))))
+  (let ((stores (map cdr/safe (map car/safe (map (cut filter store? <>) rw))))
         (new-blocks (filter (compose not fail?)  (map (cut filter quads? <>) rw))))
     (if (= (length new-blocks) 0)
         (list #f)
