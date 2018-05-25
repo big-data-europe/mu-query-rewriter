@@ -17,6 +17,10 @@
 
 (define *queried-properties* (make-parameter '()))
 
+(define *transient-functional-properties* (make-parameter '()))
+
+(define *transient-queried-properties* (make-parameter '()))
+
 (define *query-functional-properties?* (make-parameter #t))
 
 ;; Can be a string, an s-sparql expression, 

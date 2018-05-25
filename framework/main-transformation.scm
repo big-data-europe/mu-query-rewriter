@@ -166,7 +166,9 @@
 
 (define (apply-constraints query)
   (parameterize ((*constraint-prologues* (constraint-prologues))
-                 (*namespaces* (constraint-and-query-prefixes query)))
+                 (*namespaces* (constraint-and-query-prefixes query))
+                 (*transient-functional-property-cache* (make-hash-table))
+                 (*transient-queried-properties-cache* (make-hash-table)))
     (rewrite-query query (main-transformation-rules))))
 
 

@@ -88,13 +88,19 @@
 		      (string-split (or ($$body 'fprops) "") ", ")))
 	 (qprops (map string->symbol
 		      (string-split (or ($$body 'qprops) "") ", ")))  
+	 (transient-fprops (map string->symbol
+		      (string-split (or ($$body 'trfprops) "") ", ")))
+	 (transient-qprops (map string->symbol
+		      (string-split (or ($$body 'trqprops) "") ", ")))  
          (query-fprops? (equal? "true" ($$body 'query-fprops)))
          (unique-vars (map string->symbol
                               (string-split (or ($$body 'uvs) "") ", "))))
     (parameterize ((*write-constraint* write-constraint)
     		   (*read-constraint* read-constraint)
 		   (*functional-properties* fprops)
+                   (*transient-functional-properties* transient-fprops)
                    (*queried-properties* qprops)
+                   (*transient-queried-properties* transient-qprops)
                    (*unique-variables* unique-vars)
                    (*query-functional-properties?* query-fprops?))
       (let-values (((rewritten-query bindings) (apply-constraints query)))
@@ -130,6 +136,10 @@
 		      (string-split (or ($$body 'fprops) "") ", ")))
 	 (qprops (map string->symbol
 		      (string-split (or ($$body 'qprops) "") ", ")))
+	 (transient-fprops (map string->symbol
+		      (string-split (or ($$body 'trfprops) "") ", ")))
+	 (transient-qprops (map string->symbol
+		      (string-split (or ($$body 'trqprops) "") ", ")))
          (query-fprops? (equal? "true" ($$body 'query-fprops)))
          (unique-vars (map string->symbol
                               (string-split (or ($$body 'uvs) "") ", "))))
@@ -151,6 +161,8 @@
 
     (set! *functional-properties* (make-parameter fprops))
     (set! *queried-properties* (make-parameter qprops))
+    (set! *transient-functional-properties* (make-parameter transient-fprops))
+    (set! *transient-queried-properties* (make-parameter transient-qprops))
     (set! *unique-variables* (make-parameter unique-vars))
     (set! *query-functional-properties?* (make-parameter query-fprops?))
     ;; (set! apply-constraints-with-form-cache* (rememoize apply-constraints-with-form-cache))
@@ -246,20 +258,24 @@
 (define (load-plugin name)
   (load (make-pathname (*plugin-dir*) name ".scm")))
 
-(define (save-plugin name read-constraint-string write-constraint-string fprops qprops unique-vars query-fprops?)
+(define (save-plugin name read-constraint-string write-constraint-string 
+                     fprops transient-fprops qprops transient-qprops unique-vars query-fprops?)
   (let* ((replace (lambda (str) 
                    (irregex-replace/all "^[ \n]+" (irregex-replace/all "[\"]" str "\\\"") "")))
          (read-constraint-string (replace read-constraint-string))
          (write-constraint-string (and write-constraint-string (replace write-constraint-string)))
          (fprops (or fprops (*functional-properties*)))
+         (transient-fprops (or transient-fprops (*transient-functional-properties*)))
          (unique-vars  (map symbol->string (or unique-vars (*unique-variables*)))))
 
     (with-output-to-file (make-pathname (*plugin-dir*) name "scm")
       (lambda ()
         (format #t "(*functional-properties* '~A)~%~%" fprops)
-        (format #t "(*unique-variables* '~A)~%~%" unique-vars)
+        (format #t "(*transient-functional-properties* '~A)~%~%" transient-fprops)
         (format #t "(*query-functional-properties?* ~A)~%~%" query-fprops?)
         (format #t "(*queried-properties* '~A)~%~%" qprops)
+        (format #t "(*transient-queried-properties* '~A)~%~%" transient-qprops)
+        (format #t "(*unique-variables* '~A)~%~%" unique-vars)
         (format #t "(*headers-replacements* '((\"<SESSION>\" mu-session-id uri)))~%~%")
 
         (format #t (conc "(define-constraint  ~%"
@@ -290,10 +306,15 @@
                         (string-split (or ($$body 'fprops) "") ", ")))
            (qprops (map string->symbol
                         (string-split (or ($$body 'qprops) "") ", ")))
+           (transient-fprops (map string->symbol
+                        (string-split (or ($$body 'trfprops) "") ", ")))
+           (transient-qprops (map string->symbol
+                        (string-split (or ($$body 'trqprops) "") ", ")))
            (query-fprops? (equal? "true" ($$body 'query-fprops)))
            (unique-vars (map string->symbol
                              (string-split (or ($$body 'uvs) "") ", "))))
-      (save-plugin name read-constraint-string write-constraint-string fprops qprops unique-vars query-fprops?)
+      (save-plugin name read-constraint-string write-constraint-string 
+                   fprops transient-fprops qprops transient-qprops unique-vars query-fprops?)
       `((success . "true")))))
 
 (define-rest-call 'GET '("plugin")
@@ -312,6 +333,8 @@
         (writeConstraint . ,(write-sparql (call-if (*write-constraint*))))
         (functionalProperties . ,(list->vector (map ->string (*functional-properties*))))
         (queriedProperties . ,(list->vector (map ->string (*queried-properties*))))
+        (transientFunctionalProperties . ,(list->vector (map ->string (*transient-functional-properties*))))
+        (transientQueriedProperties . ,(list->vector (map ->string (*transient-queried-properties*))))
         (queryFunctionalProperties . ,(*query-functional-properties?*))
         (uniqueVariables . ,(list->vector (map ->string (*unique-variables*))))))))
 
