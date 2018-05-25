@@ -9,15 +9,16 @@
 (define (sparql-variable-name var)
   (string->symbol (substring (symbol->string var) 1)))
 
-(define (rewrite-fold block bindings proc bindings-fold)
+(define (rewrite-union-fold block bindings proc bindings-fold)
   (let loop ((block block)
              (rw '())
              (new-bindings '()))
     (if (null? block) (values rw new-bindings)
         (let-values (((r b) (proc (car block) bindings)))
-          (loop (cdr block)
-                (if (fail? r) rw (append rw r))
-                (bindings-fold b new-bindings))))))
+          (let ((r (if (null? r) '(()) r)))
+            (loop (cdr block)
+                  (append rw r)
+                  (bindings-fold b new-bindings)))))))
 
 (define (extract-subselect-vars vars)
   (filter values

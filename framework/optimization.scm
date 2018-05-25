@@ -31,7 +31,7 @@
         (match (car statements)
           ((`GRAPH graph . rest)
             (let-values (((same-graphs others) (partition (cut graph-equal? graph <>) (cdr statements))))
-              (cons `(GRAPH ,graph ,@(append rest (join (map cddr same-graphs))))
+              (cons `(GRAPH ,graph ,@(delete-duplicates (append rest (join (map cddr same-graphs)))))
                     (loop others))))
           (statement (cons statement (loop (cdr statements))))))))
 
@@ -93,7 +93,7 @@
           '()))))
 
 (define (check-queried-property s p o)
-  (member o (query-properties s p)))
+  (rdf-member o (query-properties s p)))
 
 (define fprops (make-parameter '((props) (subs))))
 
@@ -162,10 +162,10 @@
                                  (this-level-quads saved-tlq)
                                  (last-level-quads saved-llq))
                                 (let-values (((rw2 nb2) (rewrite (list rw) new-bindings)))
-                                  ;; (log-message "ol 2 (~A): ~A ~% . ~%~A~%~%" key rw2 (append-stores (join rw2) clean))
+                                  ;; (log-message "ol 2 (~A): ~A ~% key rw2)
                                   (fail-or-null rw2 nb2
                                     (list (append-stores (join rw2) clean)))))))))
-        (values (list #f) bindings))) ) )
+        (values '(#f) bindings)))))
 
 (define optimizations-graph (make-parameter #f))
 
@@ -218,18 +218,22 @@
                                             new-bindings))))))))
     ((UNION)
      . ,(lambda (block bindings)
-          (let-values (((rw new-bindings)
-                        (rewrite-fold (cdr block) bindings optimize-list 
-                                      (lambda (b bindings)
-                                        (fold-binding (get-binding/default 'functional-property-substitutions b '())
-                                                      'functional-property-substitutions merge-alists
-                                                      '() bindings)))))
-            (fail-or-null rw new-bindings
-                          (intersect-stores rw
-                                            (lambda (new-blocks)
-                                              (if (= (length new-blocks) 1)
-                                                  (car new-blocks)
-                                                  `((UNION ,@new-blocks)))))))))
+          (letrec ((union/1 (lambda (blocks)
+                              (if (= (length blocks) 1) (car blocks) `((UNION ,@blocks))))))
+            (let-values (((rw new-bindings)
+                          (rewrite-union-fold (cdr block) bindings optimize-list 
+                                        (lambda (b bindings)
+                                          (fold-binding (get-binding/default 'functional-property-substitutions b '())
+                                                        'functional-property-substitutions merge-alists
+                                                        '() bindings)))))
+              (if (member '() rw)
+                  (let ((rw (remove null? rw)))
+                    (if (fail? rw) (values '() new-bindings)
+                        (values (intersect-stores rw (lambda (blocks) `((OPTIONAL ,@(union/1 blocks)))))
+                                new-bindings)))
+                  (let ((rw (remove not rw)))
+                    (if (nulll? rw) (values '(#f) new-bindings)
+                        (values (intersect-stores rw union/1) new-bindings))))))))
     (,quads-block? 
      . ,(lambda (block bindings)
           (match block
