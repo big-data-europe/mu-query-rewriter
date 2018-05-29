@@ -56,33 +56,53 @@
       (,triple? . ,rw/copy)
       (,list? . ,rw/list))))
 
-(define (update-triples-to-quads triples constraints)
-  (rewrite triples '() (update-triples-to-quads-rules constraints)))
+(define (update-triples-to-quads triples constraints #!optional (fps '()))
+  (rewrite triples '() (update-triples-to-quads-rules constraints fps)))
 
-(define (update-triples-to-quads-rules constraints)
+(define (permutations lss)
+  (let loop ((lss lss))
+       (if (null? lss) '(())
+         (join
+          (map (lambda (a)
+                 (map (lambda (rest)
+                        (cons a rest))
+                      (loop (cdr lss))))
+               (car lss))))))
+
+(define (update-triples-to-quads-rules constraints fps)
   `((,triple?
      . ,(lambda (triple bindings)
-          (let* ((graphs (find-triple-graphs triple constraints))
-                 (graphs* (if (*insert-into-temp?*) graphs
-                              (remove (cut equal? (*temp-graph*) <>) graphs))))
-            (values (map (lambda (graph) `(GRAPH ,graph ,triple)) graphs*) bindings))))))
+          (let ((triples (permutations
+                          (map (lambda (elt)
+                                 (or (alist-ref elt fps) (list elt)))
+                               triple))))
+            (values
+             (join
+              (map (lambda (triple)
+                     (let* ((graphs (find-triple-graphs triple constraints))
+                            (graphs* (if (*insert-into-temp?*) graphs
+                                         (remove (cut equal? (*temp-graph*) <>) graphs))))
+                       (map (lambda (graph) `(GRAPH ,graph ,triple)) graphs*)))
+                   triples))
+             bindings))))))
 
 (define (instantiated-update-query rw new-bindings)
   (parameterize ((flatten-graphs? #t))
                 (let* ((opt (compose apply-optimizations group-graph-statements reorder))
                        (delete (expand-triples (or (get-child-body 'DELETE rw) '()) '() replace-a))
                        (insert (expand-triples (or (get-child-body 'INSERT rw) '()) '() replace-a)))
-                  (let-values (((where subs1) (opt (or (get-child-body 'WHERE rw) '()))))
-                    (let-values (((insert-constraints subs2) (opt (get-binding/default 'insert-constraints new-bindings '()))))
-                      (let-values (((delete-constraints subs3) (opt (get-binding/default 'delete-constraints new-bindings '()))))
+                  (let-values (((where subs1 subsqs1) (opt (or (get-child-body 'WHERE rw) '()))))
+                    (let-values (((insert-constraints subs2 subsqs2) (opt (get-binding/default 'insert-constraints new-bindings '()))))
+                      (let-values (((delete-constraints subs3 subsqs3) (opt (get-binding/default 'delete-constraints new-bindings '()))))
                         (let ((instantiated-constraints (join (instantiate insert-constraints insert))))
                           ;;(let-values (((new-where subs4) (opt (append instantiated-constraints delete-constraints where))))
                             ;;(let* ((uninstantiated-where (opt (append insert-constraints delete-constraints where)))
-                          (let-values (((new-where subs4) (opt (join (append instantiated-constraints delete-constraints where)))))
-                            (let* ((uninstantiated-where (opt (join (append insert-constraints delete-constraints where))))
-                                 (new-delete (update-triples-to-quads delete uninstantiated-where))
-                                 (new-insert (update-triples-to-quads insert uninstantiated-where)))
-                            (values (replace-child-body-if 
+                          (let-values (((new-where subs4 subsqs4) (opt (join (append instantiated-constraints delete-constraints where)))))
+                            (let* ((fps (apply merge-alists (filter pair? (list subs1 subs2 subs3  subs4))))
+                                   (uninstantiated-where (opt (join (append insert-constraints delete-constraints where))))
+                                   (new-delete (update-triples-to-quads delete uninstantiated-where fps))
+                                   (new-insert (update-triples-to-quads insert uninstantiated-where fps)))
+                              (values (replace-child-body-if 
                                      'DELETE (and (not (null? new-delete)) new-delete)
                                      (replace-child-body-if
                                       'INSERT (and (not (null? new-insert)) new-insert)
@@ -91,9 +111,7 @@
                                           (replace-child-body 
                                            'WHERE `((@SubSelect (SELECT *) (WHERE ,@(join new-where))))
                                            (reverse rw)))))
-                                    (update-binding 'functional-property-substitutions 
-                                                    (apply merge-alists (filter pair? (list subs1 subs2 subs3  subs4)))
-                                                    new-bindings)))))))))))
+                                    (update-binding 'functional-property-substitutions fps new-bindings)))))))))))
 
 
 (define query-where (make-parameter '()))
@@ -117,9 +135,11 @@
 	  (if (rewrite-select?)
               (parameterize ((query-where (get-child-body 'WHERE (cdr block))))
 	       (let-values (((rw new-bindings) (rewrite (cdr block) bindings)))
-                 (let-values (((new-where subs) (apply-optimizations (clean (get-child-body 'WHERE rw))))) ; queried-properties
+                 (let-values (((new-where subs subs-queries) (apply-optimizations (clean (get-child-body 'WHERE rw))))) ; queried-properties
                    (values `((@Query ,@(replace-child-body 'WHERE (join new-where) rw)))
-                           (update-binding 'functional-property-substitutions subs new-bindings)))))
+                           (update-binding 'functional-property-substitutions subs 
+                                           (update-binding 'functional-property-queries subs-queries
+                                           new-bindings))))))
               ;;(update-binding 'queried-functional-properties queried-properties new-bindings))))))
 	      (let-values (((rw new-bindings) (rewrite (cdr block) bindings (select-query-rules))))
                 (values `((@Query ,@rw)) new-bindings)))))

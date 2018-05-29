@@ -8,54 +8,9 @@
 (define (error-message str #!rest args)
   (apply format (current-error-port) str args))
 
-(define *query-forms* (make-hash-table))
+(define *query-forms* (make-hash-table)) 
 
 (define *cache-mailbox* (make-mailbox))
-
-(define-syntax timed-let
-  (syntax-rules ()
-    ((_ label (let-exp (vars/vals ...) body ...))
-     (let-values (((ut1 st1) (cpu-time)))
-       (let ((t1 (current-milliseconds)))
-         (let-exp (vars/vals ...)
-           (let-values (((ut2 st2) (cpu-time)))
-             (let ((t2 (current-milliseconds)))
-               (debug-message "~%[~A] ~A Time: ~Ams / ~Ams / ~Ams~%" (logkey) label (- ut2 ut1) (- st2 st1) (- t2 t1))
-               body ...))))))))
-
-(define-syntax timed
-  (syntax-rules ()
-    ((_ label body ...)
-     (let-values (((ut1 st1) (cpu-time)))
-       (let ((t1 (current-milliseconds)))
-         (let ((result body ...))
-           (let-values (((ut2 st2) (cpu-time)))
-             (let ((t2 (current-milliseconds)))
-               (debug-message "~%[~A] ~A Time: ~Ams / ~Ams / ~Ams~%" (logkey) label (- ut2 ut1) (- st2 st1) (- t2 t1))
-               result))))))))
-
-(define-syntax timed-limit
-  (syntax-rules ()
-    ((_ limit label expression body ...)
-     (let-values (((ut1 st1) (cpu-time)))
-       (let ((t1 (current-milliseconds)))
-         (let ((result body ...))
-           (let-values (((ut2 st2) (cpu-time)))
-             (let ((t2 (current-milliseconds)))
-               (when (> (- ut2 ut1) limit)
-                     (debug-message "~%[~A] Exceeded time limit for ~A: ~Ams / ~Ams / ~Ams~%~A~%~%"
-                                    (logkey) label (- ut2 ut1) (- st2 st1) (- t2 t1)
-                                    expression))
-               result))))))))
-
-(define-syntax try-safely
-  (syntax-rules ()
-    ((_ label exp body ...)
-     (handle-exceptions exn 
-                        (begin (log-message "~%[~A]  ==Error ~A==~%~A~%~%" 
-                                         (logkey) label exp)
-                               #f)
-       body ...))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Quick Splitting of Prologue/Body by Parsing
@@ -178,12 +133,16 @@
    (lambda (query)
      (make-query-pattern/form query))))
 
+(define constraint-key (make-parameter 'five))
+
 (define (query-cache-key query)
-  (list (get-query-prefix query)
-        ;;  (get-binding 'queried-functional-properties bindings)) ...
-        (make-query-pattern query)  
-        (call-if (*read-constraint*))
-        (call-if (*write-constraint*))))
+  (let-values (((pattern matches) (make-query-pattern query)))
+    (values
+     (list (get-query-prefix query)
+           pattern
+           (constraint-key))
+     matches)))
+
 
 (define (populate-cached-form pattern form match query-string)
   (let ((matches (map (lambda (name-pair)
@@ -194,21 +153,71 @@
                       (irregex-match-names match))))
     (string-translate* form matches)))
 
-(define (query-form-lookup query-string)
+(define (query-matches-fprop-queries matches bindings)
+  (let ((queries (get-binding 'functional-property-queries bindings)))
+    (if queries
+        (filter values
+                (map (match-lambda ((uri . m)
+                                    (let ((q (assoc (string->symbol uri) queries)))
+                                      (and q (cons (string->symbol m) (cdr q))))))
+                     matches))
+        '())))
+
+;; (define (query-form-lookup query-string #!optional bindings)
+;;   (log-message "~%With bindings: ~A~%" bindings)
+;;   (if (*cache-forms?*)
+;;       (let-values (((key matches) (query-cache-key query-string)))
+;;         (let ((fprop-queries (and bindings (query-matches-fprop-queries matches bindings)))
+;;               (cached-forms (hash-table-ref/default *query-forms* key #f)))
+;;           (if cached-forms
+;;               (let ((cached-form (assoc fprop-queries cached-forms)))
+;;                 (if cached-form
+;;                     (let ((pattern-regex (first (cdr cached-form))))
+;;                       (values (irregex-match pattern-regex (get-query-body query-string))
+;;                               (cdr cached-form)))
+;;                     (values #f #f)))
+;;               (values #f #f))))
+;;       (values #f #f)))
+
+(define (query-form-lookup query-string #!optional bindings)
   (if (*cache-forms?*)
-      (let ((cached-forms (hash-table-ref/default *query-forms* (query-cache-key query-string) #f)))
-        (if cached-forms
-            (let ((pattern-regex (first cached-forms)))
-              (values (irregex-match pattern-regex (get-query-body query-string))
-                      cached-forms))
-            (values #f #f)))
+      (let-values (((key matches) (query-cache-key query-string)))
+        (let ((cached-forms (hash-table-ref/default *query-forms* key #f)))
+          (if cached-forms
+              (if bindings
+                  (let ((fprop-queries (and bindings (query-matches-fprop-queries matches bindings))))
+                    (let ((cached-form (assoc fprop-queries cached-forms)))
+                      (if cached-form
+                          (let ((pattern-regex (first (cdr cached-form))))
+                            (values (irregex-match pattern-regex (get-query-body query-string))
+                                    (cdr cached-form)))
+                          (values #f #f))))
+                  (let loop ((cached-forms cached-forms))
+                    (if (or (not cached-forms) (null? cached-forms)) (values #f #f)
+                        (let* ((cached-form (car cached-forms))
+                               (pattern-regex (first (cdr cached-form)))
+                               (matches (irregex-match pattern-regex (get-query-body query-string))))
+                          (if matches
+                              (let ((fprops-match? (every values
+                                                          (map (match-lambda ((slot . index)
+                                                                              (let* ((uri (irregex-match-substring matches index))
+                                                                                     (prop-query (alist-ref slot (car cached-form))))
+                                                                              (match prop-query
+                                                                                     ((p o) (check-functional-property uri p o))
+                                                                                     (#f '())))))
+                                                             (irregex-match-names matches)))))
+                                (if fprops-match?
+                                    (values matches (cdr cached-form))
+                                    (loop (cdr cached-forms))))
+                              (loop (cdr cached-forms)))))))
+              (values #f #f))))
       (values #f #f)))
 
 (define (populate-cached-forms query-string form-match cached-forms)
   (match cached-forms
     ((pattern form form-prefix annotations annotations-forms annotations-prefixes annotations-pairs
               deltas-form deltas-prefix bindings update? cached-logkey)
-     (log-message "~%[~A] Using cached form of ~A~%" (logkey) cached-logkey)
+     (log-message "~%Using cached form [~A]: ~A~%" (logkey) cached-logkey)
      (values (replace-headers
               (conc form-prefix
                     (populate-cached-form pattern form form-match query-string)))
@@ -233,7 +242,7 @@
       (let loop ()
         (let ((thunk (mailbox-receive! *cache-mailbox*)))
           (handle-exceptions exn (begin
-                                   (log-message "[~A] Error saving cache forms~%" (logkey))
+                                   (log-message "Error saving cache forms [~A]~%" (logkey))
                                    (print-exception exn))
             (thunk)))
         (loop)))))
@@ -260,28 +269,34 @@
             bindings update? key))))
 
 (define (query-form-save! query-string rewritten-query annotations annotations-query-strings annotations-pairs
-                          deltas-query-string bindings update? key)
+                          deltas-query-string bindings update? logkey)
+  (let-values (((form-key matches) (query-cache-key query-string)))
+    (let ((fprop-queries (query-matches-fprop-queries matches bindings))
+          (table (hash-table-ref/default *query-forms* form-key '())))
       (hash-table-set! *query-forms*
-                       (query-cache-key query-string)
-                       ;; (filter (lambda (pair) (not (sparql-variable? (cdr pair))))
-                       ;;         (get-binding 'functional-properties bindings)))
-                       (make-cached-forms query-string rewritten-query 
-                                          annotations annotations-query-strings annotations-pairs
-                                          deltas-query-string bindings update? key)))
+                       form-key
+                       (cons (cons fprop-queries
+                                   (make-cached-forms query-string rewritten-query 
+                                                      annotations annotations-query-strings annotations-pairs
+                                                      deltas-query-string bindings update? logkey))
+                             table)))))
 
 (define (enqueue-save-cache-form  query-string rewritten-query-string
                                   annotations annotations-query-strings annotations-pairs
                                   deltas-query-string bindings update?)
-  (let ((key (logkey)) (rc (*read-constraint*)) (wc (*write-constraint*)))
-    (debug-message "[~A] Saving cache form...~%" (logkey))
+  (let ((key (logkey)) (*rc* (*read-constraint*)) (*wc* (*write-constraint*))
+        (ck (constraint-key)) (ckh (make-cache-key-headers)))
+    (debug-message "Saving cache form [~A]...~%" (logkey))
     (enqueue-cache-action!
-     (lambda ()
+    (lambda ()
        (parameterize ((logkey key)
-                      (*read-constraint* rc)
-                      (*write-constraint* wc))
-                     (let-values (((form-match _) (query-form-lookup query-string)))
+                      (*read-constraint* *rc*)
+                      (*write-constraint* *wc*)
+                      (constraint-key ck)
+                      (cache-key-headers ckh))
+                     (let-values (((form-match _) (query-form-lookup query-string bindings)))
                        (if form-match
-                           (begin (debug-message "[~A] Already cached~%" key)
+                           (begin (debug-message "Already cached [~A]~%" key)
                                   #f)
                            (timed "Generate Cache Form"
                                   (query-form-save! query-string 
@@ -292,15 +307,17 @@
                                                     bindings update? key)))))))))
 
 (define (apply-constraints-with-form-cache query-string)
- (apply-constraints-with-form-cache* query-string
-                                     (call-if (*read-constraint*))
-                                     (call-if (*write-constraint*))))
+  (parameterize ((cache-key-headers (make-cache-key-headers)))
+                (apply-constraints-with-form-cache* query-string)))
+                                      ;; (read-constraint)
+                                      ;; (write-constraint)))  )
 
-(define (apply-constraints-with-form-cache* query-string
-                                           read-constraint
-                                           write-constraint)
+(define (apply-constraints-with-form-cache* query-string)
   (timed-let "Lookup"
-   (let-values (((form-match cached-forms) (query-form-lookup query-string)))
+   (parameterize ((constraint-key (if (irregex-search (irregex "select" 'i) (get-query-body query-string))
+                                      (list (read-constraint))
+                                      (list (read-constraint) (write-constraint)))))                                      
+    (let-values (((form-match cached-forms) (query-form-lookup query-string)))
      (if form-match
          (populate-cached-forms query-string form-match cached-forms)
          (let ((query (parse-query query-string)))
@@ -319,7 +336,7 @@
                            (deltas-query (and (*send-deltas?*) (notify-deltas-query rewritten-query)))
                            (deltas-query-string (and deltas-query (write-sparql deltas-query))))
 
-                      (log-message "~%[~A]  ==Rewritten Query==~%~A~%" (logkey) rewritten-query-string)
+                      (log-message "~%==Rewritten Query== [~A]~%~A~%" (logkey) rewritten-query-string)
 
                       (when (*cache-forms?*)
                             (enqueue-save-cache-form query-string rewritten-query-string
@@ -333,7 +350,7 @@
                               (and deltas-query-string (replace-headers deltas-query-string))
                               bindings
                               update?
-                              )))))))))))
+                              )))))))))))  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; memoization
@@ -373,5 +390,6 @@
 
 (define get-dependencies (memoize-save get-dependencies))
 
-(define apply-constraints-with-form-cache* (memoize-save apply-constraints-with-form-cache*))
+;; This breaks 
+;;(define apply-constraints-with-form-cache* (memoize-save apply-constraints-with-form-cache*))
 

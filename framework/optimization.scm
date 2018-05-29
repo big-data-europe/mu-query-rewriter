@@ -73,12 +73,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Functional Properties (and other optimizations)
 (define (apply-optimizations block)
-  (if (nulll? block) (values '() '())
+  (if (nulll? block) (values '() '() '())
       (let-values (((rw new-bindings) (rewrite (list block) '() (optimization-rules))))
         (if (equal? rw '(#f))
             (error (format "Invalid query block (optimizations):~%~A" (write-sparql block)))
              (values (clean (map (cut filter quads? <>) (filter quads? rw)))
-                    (get-binding/default 'functional-property-substitutions new-bindings '())  )))))
+                     (get-binding/default 'functional-property-substitutions new-bindings '()) 
+                     (get-binding/default 'functional-property-queries new-bindings '())  )))))
 ;; (get-binding/default 'queried-functional-properties new-bindings '()))))))
 
 (define *functional-property-cache* (make-hash-table))
@@ -97,20 +98,25 @@
   (or (rdf-member p (*queried-properties*))
       (rdf-member p (*transient-queried-properties*))))
 
-(define (query-functional-property s p o)
+(define (query-functional-property s p)
   (if (rdf-member p (*functional-properties*))
-      (query-functional-property* s p o *functional-property-cache*)
-      (query-functional-property* s p o (*transient-functional-property-cache*))))
+      (query-functional-property* s p *functional-property-cache*)
+      (query-functional-property* s p (*transient-functional-property-cache*))))
 
-(define (query-functional-property* s p o cache)
+(define (query-functional-property* s p cache)
   (hit-hashed-cache cache (list s p)
-    (let ((results (sparql-select-unique "SELECT ~A  WHERE { ~A ~A ~A }" o s p o)))
-      (and results (alist-ref (sparql-variable-name o) results)))))
+    (let ((results (sparql-select-unique "SELECT ?o WHERE { ~A ~A ?o }" s p)))
+      (and results (alist-ref 'o results)))))
+
+(define (check-functional-property s p o)
+  (let ((value (query-functional-property s p)))
+    (or (not value)
+        (rdf-equal? value o))))
 
 (define (query-properties s p)
   (if (rdf-member p (*queried-properties*))
       (query-properties* s p *queried-properties-cache*)
-      (query-properties* s p (*transient-functional-properties-cache*))))
+      (query-properties* s p (*transient-functional-property-cache*))))
 
 (define (query-properties* s p cache)
   (hit-hashed-cache cache (list s p)
@@ -124,7 +130,7 @@
 (define fprops (make-parameter '((props) (subs))))
 
 (define (replace-fprop elt)
-  (if (sparql-variable? elt)
+  (if (or (sparql-variable? elt) (blank-node? elt))
       (let ((subs (get-store 'subs)))
         (or (alist-ref elt subs) elt))
         elt))
@@ -141,12 +147,12 @@
 		  (let ((current-value (cdr-when (assoc `(,s ,(a->rdf:type p)) props))))
 		    (cond ((not current-value)
 			   (loop (cdr quads) (cons `((,s ,(a->rdf:type p)) . ,o) props) subs))
-			  ((and (sparql-variable? current-value)
+			  ((and (or (sparql-variable? current-value) (blank-node? current-value))
 				(not (sparql-variable? o)))
 			   (loop (cdr quads) (cons `((,s ,(a->rdf:type p)) . ,o) props) 
 				 (assoc-update current-value o subs)))
 			  ((rdf-equal? o current-value) (loop (cdr quads) props subs))
-			  ((sparql-variable? o)
+			  ((or (sparql-variable? o) (blank-node? o))
 			   (loop (cdr quads) props 
 				 (assoc-update o current-value subs)))
 			  (else #f)))
@@ -216,10 +222,11 @@
               (values '() bindings)
               (match block
                      ((`VALUES vars . vals)
-                      (let ((simplified (simplify-values (map replace-fprop vars) vals bindings)))
-                      (values
-                       (if (null? simplified) '() (list simplified))
-                       bindings)))))))
+                      (let ((vars (if (list? vars) vars (list vars))))
+                        (let ((simplified (simplify-values (map replace-fprop vars) vals bindings)))
+                          (values
+                           (if (null? simplified) '() (list simplified))
+                           bindings))))))))
     ((FILTER) 
      . ,(lambda (block bindings)
           (if (member block (last-level-quads))
@@ -251,7 +258,10 @@
                                         (lambda (b bindings)
                                           (fold-binding (get-binding/default 'functional-property-substitutions b '())
                                                         'functional-property-substitutions merge-alists
-                                                        '() bindings)))))
+                                                        '() 
+                                                        (fold-binding (get-binding/default 'functional-property-queries b '())
+                                                                       'functional-property-queries append-unique '()
+                                                                       bindings))))))
               (if (member '() rw)
                   (let ((rw (remove null? rw)))
                     (if (fail? rw) (values '() new-bindings)
@@ -277,16 +287,29 @@
                 ((s p o)
                  (cond ((and (*query-functional-properties?*)
                              (not (sparql-variable? s))
+                             (not (blank-node? s))
                              (functional-property? p)
-                             (sparql-variable? o))
-                        (let ((o* (query-functional-property s p o)))
+                             (or (sparql-variable? o)
+                                 (blank-node? o)))
+                        (let ((o* (query-functional-property s p)))
                           (if o*
                               (values (update-store 'subs `((,o . ,o*))
                                        (update-store 'props `(((,s ,p) . ,o*))
                                         `((,s ,p ,o*))))
                                       (fold-binding `((,o ,o*)) 'functional-property-substitutions 
-                                                    merge-alists '() bindings))
+                                                    merge-alists '() 
+                                                    (fold-binding (list (map expand-namespace (list s p o*)))
+                                                                  'functional-property-queries
+                                                                  append-unique '()
+                                                                  bindings)))
                               (values `((,s ,p ,o)) bindings))))
+                       ((and (*query-functional-properties?*)
+                             (not (sparql-variable? s))
+                             (not (blank-node? s))
+                             (functional-property? p))
+                        (if (check-functional-property s p o)
+                            (values `((,s ,p ,o)) bindings)
+                            (values '(#f) bindings)))
                        ((and (not (sparql-variable? s))
                              (not (sparql-variable? o))
                              (queried-property? p))
@@ -300,3 +323,4 @@
 
 
 
+ 

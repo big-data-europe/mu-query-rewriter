@@ -13,6 +13,8 @@
 
 
 
+(include "framework/macros.scm")
+
 (include "framework/settings.scm")
 
 (include "framework/rw.scm") ; factor up to s-sparql

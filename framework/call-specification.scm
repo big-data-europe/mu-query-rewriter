@@ -19,7 +19,7 @@
       (abort exn)))
 
 (define (rewriting-error exn)
-  (error-message "~%==Rewriting Error (~A)==~%" (logkey)) 
+  (error-message "~%==Rewriting Error== [~A]~%" (logkey)) 
   (error-message "~%~A~%" ((condition-property-accessor 'exn 'message) exn))
   (print-error-message exn (current-error-port))
   (print-call-chain (current-error-port))
@@ -52,7 +52,7 @@
         result))))
 
 (define (log-headers)
-  (debug-message "~%[~A]  ==Received Headers==~%~A~%" (logkey) (*request-headers*)))
+  (debug-message "~%==Received Headers== [~A] ~%~A~%" (logkey) (*request-headers*)))
 
 (define (call-if C) (if (procedure? C) (C) C))
 
@@ -66,7 +66,7 @@
                                         (and url-decoded-body (alist-ref 'query url-decoded-body)))
                                       body)))))
           (log-headers)
-          (log-message "~%[~A]  ==Rewriting Query==~%~A~%" (logkey) query-string)
+          (log-message "~%==Rewriting Query== [~A]  ~%~A~%" (logkey) query-string)
 
           (let-values (((rewritten-query-string annotations annotations-query-strings annotations-pairs
                                                 deltas-query-string bindings update?)
@@ -85,10 +85,10 @@
                                              (*sparql-endpoint*)))))
                 
                 (when (*calculate-annotations?*) 
-                      (log-message "~%[~A]  ==Annotations==~%~A~% " 
+                      (log-message "~%==Annotations== [~A]  ~%~A~% " 
                                    (logkey) annotations)
 
-                      (log-message "~%[~A]  ==Queried Annotations==~%~A~% " 
+                      (log-message "~%==Queried Annotations== [~A]  ~%~A~% " 
                                    (logkey) (try-safely "Getting Queried Annotations" annotations-query-strings
                                                         (and annotations-query-strings
                                                              (map (lambda (q)
@@ -96,7 +96,7 @@
                                                                   annotations-query-strings)))))
 
                 (let ((headers (headers->list (response-headers response))))
-                  (log-message "~%[~A]  ==Results==~%~A~%" 
+                  (log-message "~%==Results== [~A] ~%~A~%" 
                                (logkey) (substring result 0 (min 1500 (string-length result))))
                   (mu-headers headers)
                   result)))))))        ))

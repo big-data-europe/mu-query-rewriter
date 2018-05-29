@@ -38,12 +38,49 @@
 
 (define (define-constraint* C constraint)
   (if (procedure? constraint)
-      (C (lambda () (parse-constraint (constraint))))
-      (C (parse-constraint constraint))))
+      (C (lambda () (parse-constraint (replace-headers (constraint)))))
+      (C (lambda () (parse-constraint (replace-headers constraint))))))
+
+; (@QueryUnit (@Query (@Prologue) (CONSTRUCT (?s ((?p ?o)))) (@Dataset) (WHERE (?s ((?p ?o))))))
+(define optimize-constraint-rules
+  `(((@QueryUnit @Query @Update
+                 DELETE INSERT |DELETE WHERE| |INSERT DATA|) . ,rw/quads)
+    ((CONSTRUCT @Prologue @Dataset @Using) . ,rw/copy)
+    ((WHERE)
+     . ,(lambda (block bindings)
+          (values `((WHERE ,@(join (apply-optimizations (cdr block)))))
+                  bindings)))))
+
+(define (optimize-constraint-headers) '(mu-session-id mu-call-id))
+
+(define cache-key-headers (make-parameter #f))
+
+(define (make-cache-key-headers)
+  (map 
+   (lambda (h) (or (header h) (gensym)))
+   (optimize-constraint-headers)))
+
+(define (optimize-constraint** C headers)
+  (timed (format "Rewriting constraint ")
+    (parameterize ((*constraint-prologues* (constraint-prologues))
+                   (*namespaces* (append (*namespaces*) (constraint-prefixes)))
+                   (*transient-functional-property-cache* (make-hash-table))
+                   (*transient-queried-properties-cache* (make-hash-table)))
+      (rewrite-query C optimize-constraint-rules))))
+
+(define optimize-constraint* (memoize optimize-constraint**))
+
+(define (optimize-constraint C)
+  (optimize-constraint* C (cache-key-headers)))
+ 
+(define (get-constraint C)
+  (optimize-constraint (if (procedure? C) (C) C)))
+  ;;(if (procedure? C) (C) C))
 
 (define (apply-constraint triple bindings C)
-  (parameterize ((flatten-graphs? #f))
-                (let* ((C* (if (procedure? C) (C) C)))
+  (parameterize ((flatten-graphs? #f)
+                 (cache-key-headers (make-cache-key-headers)))
+                (let* ((C* (get-constraint C)))
                   (match triple
                          ((a (`^ b) c)
                           (rewrite (list C*) bindings (apply-constraint-rules (list c b a))))
@@ -62,3 +99,7 @@
 
 (define (apply-write-constraint triple bindings)
   (apply-constraint triple bindings (*write-constraint*)))
+
+(define (read-constraint) (get-constraint (*read-constraint*)))
+
+(define (write-constraint) (get-constraint (*write-constraint*)))

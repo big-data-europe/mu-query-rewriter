@@ -197,7 +197,7 @@
   (lambda (_)
     (let* ((session (header 'mu-session-id))
            (results (sparql-select-unique 
-                     "SELECT ?user WHERE { <~A> mu:account ?user }" 
+                     "SELECT ?user WHERE { <~A> <http://mu.semte.ch/vocabularies/authorization/account> ?user }" 
                      session))
            (user (and results (alist-ref 'user results))))
       (if user
@@ -213,7 +213,7 @@
            (user ($$body 'user))
            (session-id (header 'mu-session-id)))
       (sparql-update "DELETE WHERE { GRAPH <http://mu.semte.ch/authorization> { ?s ?p ?o } }")
-      (sparql-update "INSERT DATA { GRAPH <http://mu.semte.ch/authorization> { <~A> mu:account <~A> } }" 
+      (sparql-update "INSERT DATA { GRAPH <http://mu.semte.ch/authorization> { <~A> <http://mu.semte.ch/vocabularies/authorization/account> <~A> } }" 
                      session-id user))))
 
 (define-rest-call 'POST '("proxy")
