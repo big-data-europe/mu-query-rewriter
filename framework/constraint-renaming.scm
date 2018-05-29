@@ -106,7 +106,11 @@
 		  (if (null? exp) 
 		      (values renamed-exp substitutions)
 		      (let ((var (car exp)))
-			(cond ((pair? var)
+			(cond ((and (pair? var) (not (list? var))) ; cons pair
+                               (loop (cdr exp)
+                                     (append renamed-exp (list var))
+                                     substitutions))
+                              ((pair? var)
 			       (let-values (((sub subs) (loop var '() substitutions)))
 				 (loop (cdr exp) 
 				       (append renamed-exp (list sub))

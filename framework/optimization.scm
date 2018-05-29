@@ -75,11 +75,13 @@
 (define (apply-optimizations block)
   (if (nulll? block) (values '() '() '())
       (let-values (((rw new-bindings) (rewrite (list block) '() (optimization-rules))))
-        (if (equal? rw '(#f))
-            (error (format "Invalid query block (optimizations):~%~A" (write-sparql block)))
-             (values (clean (map (cut filter quads? <>) (filter quads? rw)))
-                     (get-binding/default 'functional-property-substitutions new-bindings '()) 
-                     (get-binding/default 'functional-property-queries new-bindings '())  )))))
+        (let ((subs (map (match-lambda ((a . b) (list a b)))
+                         (join (map (cut get-returned-store 'subs <>) (map (cut filter store? <>) rw))))))
+          (if (equal? rw '(#f))
+              (error (format "Invalid query block (optimizations):~%~A" (write-sparql block)))
+              (values (clean (map (cut filter quads? <>) (filter quads? rw)))
+                      (append subs (get-binding/default 'functional-property-substitutions new-bindings '()) )
+                      (get-binding/default 'functional-property-queries new-bindings '())  ))))))
 ;; (get-binding/default 'queried-functional-properties new-bindings '()))))))
 
 (define *functional-property-cache* (make-hash-table))
@@ -116,7 +118,7 @@
 (define (query-properties s p)
   (if (rdf-member p (*queried-properties*))
       (query-properties* s p *queried-properties-cache*)
-      (query-properties* s p (*transient-functional-property-cache*))))
+      (query-properties* s p (*transient-queried-properties-cache*))))
 
 (define (query-properties* s p cache)
   (hit-hashed-cache cache (list s p)
@@ -317,7 +319,6 @@
                             (values `((,s ,p ,o)) bindings)
                             (values '(#f) bindings)))
                        (else (values `((,s ,p ,o)) bindings))))))))
-                     
     (,list? . ,optimize-list)
     (,symbol? . ,rw/copy)))
 

@@ -48,8 +48,11 @@
     ((CONSTRUCT @Prologue @Dataset @Using) . ,rw/copy)
     ((WHERE)
      . ,(lambda (block bindings)
-          (values `((WHERE ,@(join (apply-optimizations (cdr block)))))
-                  bindings)))))
+          (let-values (((rw fpsubs fpqueries) (apply-optimizations (cdr block))))
+            (values `((WHERE ,@(join rw)))
+                    (update-binding 'functional-property-substitutions 
+                                    fpsubs
+                                    bindings)))))))
 
 (define (optimize-constraint-headers) '(mu-session-id mu-call-id))
 
@@ -61,12 +64,14 @@
    (optimize-constraint-headers)))
 
 (define (optimize-constraint** C headers)
-  (timed (format "Rewriting constraint ")
+  (timed-let (format "Rewriting Constraint")
+   (let-values (((a b)
     (parameterize ((*constraint-prologues* (constraint-prologues))
                    (*namespaces* (append (*namespaces*) (constraint-prefixes)))
                    (*transient-functional-property-cache* (make-hash-table))
                    (*transient-queried-properties-cache* (make-hash-table)))
       (rewrite-query C optimize-constraint-rules))))
+     (values a b))))
 
 (define optimize-constraint* (memoize optimize-constraint**))
 

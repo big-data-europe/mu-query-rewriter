@@ -321,7 +321,7 @@
      (if form-match
          (populate-cached-forms query-string form-match cached-forms)
          (let ((query (parse-query query-string)))
-           (timed-let "Rewrite"
+           (timed-let "Rewrite" 
               (let-values (((rewritten-query bindings) (apply-constraints query)))
                 (let* ((update? (update-query? query))
                        (annotations (and (*calculate-annotations?*) 
