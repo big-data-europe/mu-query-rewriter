@@ -137,12 +137,17 @@
 
 (define (query-cache-key query)
   (let-values (((pattern matches) (make-query-pattern query)))
-    (values
-     (list (get-query-prefix query)
-           pattern
-           (constraint-key))
-     matches)))
-
+    (let ((ck (constraint-key)))
+      (values
+       (list (get-query-prefix query)
+             pattern
+             (car ck)
+             (filter values
+                     (map (match-lambda ((uri . key)
+                                         (let ((sub-var (alist-ref (string->symbol uri) (second ck))))
+                                           (and sub-var (list sub-var key)))))
+                          matches)))
+       matches))))
 
 (define (populate-cached-form pattern form match query-string)
   (let ((matches (map (lambda (name-pair)
@@ -309,14 +314,24 @@
 (define (apply-constraints-with-form-cache query-string)
   (parameterize ((cache-key-headers (make-cache-key-headers)))
                 (apply-constraints-with-form-cache* query-string)))
-                                      ;; (read-constraint)
-                                      ;; (write-constraint)))  )
+
+(define (make-constraint-key select-query?)
+  (if select-query?
+      (let-values (((constraint bindings) (read-constraint)))
+        (list constraint
+              (map (compose (cut apply cons <>) reverse)
+                   (delete-duplicates (get-binding 'functional-property-substitutions bindings)))))
+      (let-values (((r-constraint r-bindings) (read-constraint))
+                   ((w-constraint w-bindings) (write-constraint)))
+        (list (list r-constraint w-constraint) 
+              (map (compose (cut apply cons <>) reverse)
+                   (delete-duplicates
+                    (append (get-binding 'functional-property-substitutions r-bindings)
+                            (get-binding 'functional-property-substitutions w-bindings))))))))
 
 (define (apply-constraints-with-form-cache* query-string)
   (timed-let "Lookup"
-   (parameterize ((constraint-key (if (irregex-search (irregex "select" 'i) (get-query-body query-string))
-                                      (list (read-constraint))
-                                      (list (read-constraint) (write-constraint)))))                                      
+   (parameterize ((constraint-key (make-constraint-key (irregex-search (irregex "select" 'i) (get-query-body query-string)))))
     (let-values (((form-match cached-forms) (query-form-lookup query-string)))
      (if form-match
          (populate-cached-forms query-string form-match cached-forms)
