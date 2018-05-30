@@ -24,16 +24,20 @@
 
 (define (query-constructs query)
   (and (update-query? query)
-       (let loop ((queryunits (alist-ref '@UpdateUnit query))
-                  (prologues '(@Prologue)) (constructs '()))
+       (let loop ((queryunits (cdr query))
+                  (prologues '(@Prologue))
+                  (constructs '()))
          (if (null? queryunits) constructs
              (let* ((queryunit (car queryunits))
-                    (unit (alist-ref '@Update queryunit))
-                    (prologue (append prologues (or (alist-ref '@Prologue queryunit) '())))
+                    (unit (cdr queryunit))
+                    (prologue (append prologues
+                                      (or (alist-ref '@Prologue unit) 
+                                          '())))
                     (where (assoc 'WHERE unit))
                     (delete-construct (construct-statements (alist-ref 'DELETE unit)))
                     (insert-construct (construct-statements (alist-ref 'INSERT unit)))
-                    (S (lambda (c) (and c `(,prologue ,c ,(or where '(NOWHERE)))))))
+                    ;; (S (lambda (c) (and c `(,prologue ,c ,(or where '(NOWHERE)))))))
+                    (S (lambda (c) (and c `(@QueryUnit (@Query ,prologue ,c ,(or where '(NOWHERE))))))))
                (loop (cdr queryunits) prologue
                      (cons (list (S delete-construct) (S insert-construct))
                            constructs)))))))
@@ -76,10 +80,10 @@
                        graph (append (or (alist-ref graph diffs) '()) (cdar ds))
                        diffs))))))))
 
-(define (run-delta query label)
+(define (run-delta query-string label)
   (parameterize ((*query-unpacker* string->json))
     (let* ((gkeys '(http://mu.semte.ch/graphs/Graphs http://mu.semte.ch/graphs/include))
-           (results (sparql-select (write-sparql query)))
+           (results (sparql-select query-string))  
            (graphs (map (cut alist-ref 'value <>)
                         (vector->list
                          (or (nested-alist-ref* gkeys results) (vector)))))
@@ -91,8 +95,14 @@
       (merge-delta-triples-by-graph
        label (join (filter values (map D results)))))))
 
-(define (run-deltas query)
-  (let ((constructs (query-constructs query))
+(define (make-deltas-queries query)
+  (map (lambda (pair)
+         (map (lambda (q) (and q (write-sparql q)))
+              pair))
+       (query-constructs query)))
+
+(define (run-deltas constructs)
+  (let (;(constructs (query-constructs query))
         (R (lambda (c l) (or (and c (run-delta c l)) '()))))
     (map (match-lambda
            ((d i) 
@@ -110,16 +120,15 @@
     (close-connection! uri)
     result))
 
-(define (notify-deltas query)
-  (let ((queries-deltas (run-deltas query)))
+(define (notify-deltas deltas)
     (thread-start!
      (make-thread
       (lambda ()
         (for-each (lambda (query-deltas)
                     (let ((deltastr (json->string query-deltas)))
+                      (debug-message "~%Sending deltas: ~A~%" deltastr)
                       (for-each (lambda (subscriber)
-                                  (log-message "~%Deltas: notifying ~A~% " subscriber)
+                                  (log-message "~%Notifying deltas: ~A~% " subscriber)
                                   (notify-subscriber subscriber deltastr))
                                 *subscribers*)))
-                  queries-deltas))))))
-
+                  deltas)))))

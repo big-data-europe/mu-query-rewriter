@@ -221,7 +221,7 @@
 (define (populate-cached-forms query-string form-match cached-forms)
   (match cached-forms
     ((pattern form form-prefix annotations annotations-forms annotations-prefixes annotations-pairs
-              deltas-form deltas-prefix bindings update? cached-logkey)
+              deltas-forms deltas-prefixes bindings update? cached-logkey)
      (log-message "~%Using cached form [~A]: ~A~%" (logkey) cached-logkey)
      (values (replace-headers
               (conc form-prefix
@@ -234,10 +234,14 @@
                                 (populate-cached-form pattern annotations-form form-match query-string))))
                        annotations-prefixes annotations-forms))
              annotations-pairs
-             (and deltas-form 
-                  (replace-headers
-                   (conc deltas-prefix
-                         (populate-cached-form pattern deltas-form form-match query-string))))
+             (and deltas-forms 
+                  (map (lambda (prefix-pair form-pair)
+                         (map (lambda (prefix form)
+                                (and form
+                                     (conc prefix
+                                           (populate-cached-form pattern form form-match query-string))))
+                              prefix-pair form-pair))
+                       deltas-prefixes deltas-forms))
              bindings
              update?))))
 
@@ -259,9 +263,13 @@
 
 (define (make-cached-forms query-string rewritten-query
                            annotations annotations-query-strings annotations-pairs
-                           deltas-query-string bindings update? key)
+                           deltas-query-strings bindings update? key)
   (let-values (((pattern form-bindings) (make-query-pattern query-string)))
     (let* ((make-form (lambda (q) (and q (make-query-form q form-bindings)))))
+(log-message "~%Caching deltas: ~%~A~%"  (map (lambda (pair)
+                                               (map (lambda (q) (and q (make-form q)))
+                                                    pair))
+                                             deltas-query-strings))
       (list (irregex pattern)
             (make-form rewritten-query)
             (get-query-prefix rewritten-query)
@@ -269,12 +277,19 @@
             (and annotations-query-strings (map make-form annotations-query-strings))
             (and annotations-query-strings (map get-query-prefix annotations-query-strings))
             annotations-pairs
-            (and deltas-query-string (make-form deltas-query-string))
-            (and deltas-query-string (get-query-prefix deltas-query-string))
+            (and deltas-query-strings (map (lambda (pair)
+                                               (map (lambda (q) (and q (make-form q)))
+                                                    pair))
+                                             deltas-query-strings))
+            (and deltas-query-strings (map (lambda (pair)
+                                            (map (lambda (q) (and q (get-query-prefix q)))
+                                                 pair))
+                                          deltas-query-strings))
+                                          
             bindings update? key))))
 
 (define (query-form-save! query-string rewritten-query annotations annotations-query-strings annotations-pairs
-                          deltas-query-string bindings update? logkey)
+                          deltas-query-strings bindings update? logkey)
   (let-values (((form-key matches) (query-cache-key query-string)))
     (let ((fprop-queries (query-matches-fprop-queries matches bindings))
           (table (hash-table-ref/default *query-forms* form-key '())))
@@ -283,12 +298,12 @@
                        (cons (cons fprop-queries
                                    (make-cached-forms query-string rewritten-query 
                                                       annotations annotations-query-strings annotations-pairs
-                                                      deltas-query-string bindings update? logkey))
+                                                      deltas-query-strings bindings update? logkey))
                              table)))))
 
 (define (enqueue-save-cache-form  query-string rewritten-query-string
                                   annotations annotations-query-strings annotations-pairs
-                                  deltas-query-string bindings update?)
+                                  deltas-query-strings bindings update?)
   (let ((key (logkey)) (*rc* (*read-constraint*)) (*wc* (*write-constraint*))
         (ck (constraint-key)) (ckh (make-cache-key-headers)))
     (debug-message "Saving cache form [~A]...~%" (logkey))
@@ -308,7 +323,7 @@
                                                     rewritten-query-string
                                                     annotations
                                                     annotations-query-strings annotations-pairs
-                                                    deltas-query-string
+                                                    deltas-query-strings
                                                     bindings update? key)))))))))
 
 (define (apply-constraints-with-form-cache query-string)
@@ -345,24 +360,22 @@
                   (let-values (((aqueries annotations-pairs) (if annotations
                                                                (annotations-queries annotations rewritten-query)
                                                                (values #f #f))))
-                    (let* (;;(queried-annotations (and aquery (try-safely "Getting Queried Annotations" aquery 
-                           (rewritten-query-string (write-sparql rewritten-query))
+                    (let* ((rewritten-query-string (write-sparql rewritten-query))
                            (annotations-query-strings (and aqueries (map write-sparql aqueries)))
-                           (deltas-query (and (*send-deltas?*) (notify-deltas-query rewritten-query)))
-                           (deltas-query-string (and deltas-query (write-sparql deltas-query))))
+                           (deltas-query-strings (and update? (*send-deltas?*) (make-deltas-queries rewritten-query))))
 
                       (log-message "~%==Rewritten Query== [~A]~%~A~%" (logkey) rewritten-query-string)
 
                       (when (*cache-forms?*)
                             (enqueue-save-cache-form query-string rewritten-query-string
                                                      annotations annotations-query-strings annotations-pairs
-                                                     deltas-query-string bindings update?))
+                                                     deltas-query-strings bindings update?))
 
-                      (values (replace-headers rewritten-query-string)
+                      (values rewritten-query-string
                               annotations
-                              (and annotations-query-strings (map replace-headers annotations-query-strings))
+                              (and annotations-query-strings annotations-query-strings)
                               annotations-pairs
-                              (and deltas-query-string (replace-headers deltas-query-string))
+                              deltas-query-strings
                               bindings
                               update?
                               )))))))))))  )

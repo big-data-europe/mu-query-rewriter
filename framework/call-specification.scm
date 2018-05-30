@@ -69,13 +69,13 @@
           (log-message "~%==Rewriting Query== [~A]  ~%~A~%" (logkey) query-string)
 
           (let-values (((rewritten-query-string annotations annotations-query-strings annotations-pairs
-                                                deltas-query-string bindings update?)
+                                                deltas-query-strings bindings update?)
                         (handle-exceptions exn (rewriting-error exn)
                                            (apply-constraints-with-form-cache query-string))))
 
             (handle-exceptions exn (virtuoso-error exn)
 
-              ;; (when (and update? (*send-deltas?*)) ...
+              (when (and update? (*send-deltas?*)) (notify-deltas (run-deltas deltas-query-strings)))
 
               (let-values (((result uri response query-time)
                             (proxy-query (logkey)
