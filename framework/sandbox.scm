@@ -338,6 +338,28 @@
         (queryFunctionalProperties . ,(*query-functional-properties?*))
         (uniqueVariables . ,(list->vector (map ->string (*unique-variables*))))))))
 
+(define-rest-call 'GET '("users")
+  (lambda (_)
+    (list->vector
+     (map (lambda (user)
+            `((uri . ,(write-uri (alist-ref 'user user)))
+              (role . ,(alist-ref 'role user))
+              (name . ,(rdf->json (alist-ref 'name user)))))
+          (sparql-select
+           (conc
+            "PREFIX muauth: <http://mu.semte.ch/vocabularies/authorization/>"
+            "PREFIX dct: <http://purl.org/dc/terms/>"
+            "SELECT DISTINCT ?user ?role ?name "
+            "WHERE { "
+            " { ?user muauth:has-role ?role }"
+            " UNION { ?user muauth:has-role/dct:title ?role }"
+            " FILTER (isLiteral(?role))"
+            " OPTIONAL { "
+            "  { ?user dct:title ?name } "
+            "  UNION { ?user foaf:name ?name } "
+            " } "
+           "}" ))))))
+
 ;; (define (serve-file path)
 ;;   (log-message "~%Serving ~A~%" path)
 ;;   (call-with-input-file path
