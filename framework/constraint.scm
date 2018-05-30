@@ -4,6 +4,10 @@
   (make-parameter
    `(("<SESSION>" mu-session-id uri))))
 
+(define *optimize-constraint-cache-headers*
+  (make-parameter
+   '(mu-session-id mu-call-id)))
+
 (define make-replacement-headers-pairs
   (match-lambda
    ((template key type)
@@ -54,22 +58,23 @@
                                     fpsubs
                                     bindings)))))))
 
-(define (optimize-constraint-headers) '(mu-session-id mu-call-id))
-
+;; param!!
 (define cache-key-headers (make-parameter #f))
 
 (define (make-cache-key-headers)
   (map 
    (lambda (h) (or (header h) (gensym)))
-   (optimize-constraint-headers)))
+   (*optimize-constraint-cache-headers*)))
 
 (define (optimize-constraint** C headers)
   (timed-let (format "Rewriting Constraint")
    (let-values (((a b)
     (parameterize ((*constraint-prologues* (constraint-prologues))
                    (*namespaces* (append (*namespaces*) (constraint-prefixes)))
-                   (*transient-functional-property-cache* (make-hash-table))
-                   (*transient-queried-properties-cache* (make-hash-table)))
+                   (*transient-functional-property-cache* (or (*transient-functional-property-cache*)
+                                                              (make-hash-table)))
+                   (*transient-queried-properties-cache* (or (*transient-queried-properties-cache*)
+                                                             (make-hash-table))))
       (rewrite-query C optimize-constraint-rules))))
      (values a b))))
 

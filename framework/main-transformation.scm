@@ -97,13 +97,8 @@
                       (let-values (((delete-constraints subs3 subsqs3) 
                                     (opt (get-binding/default 'delete-constraints new-bindings '()))))
                         (let ((instantiated-constraints (join (instantiate insert-constraints insert))))
-                          ;;(let-values (((new-where subs4) (opt (append instantiated-constraints delete-constraints where))))
-                            ;;(let* ((uninstantiated-where (opt (append insert-constraints delete-constraints where)))
-                          (let-values (((new-where subs4 subsqs4)
-                                        (parameterize ((*query-functional-properties?* #f)
-                                                       (*queried-properties* '()))
-                                                      (opt
-                                                       (join (append instantiated-constraints delete-constraints where)))))
+                          (let-values (((new-where subs4 subsqs4) 
+                                        (opt (join (append instantiated-constraints delete-constraints where))))
                                        ((a b) (read-constraint))
                                        ((c d) (read-constraint)))                            
                             (let* ((fps (apply merge-alists (filter pair? 
@@ -111,8 +106,6 @@
                                                                           (get-binding 'functional-property-substitutions b)
                                                                           (get-binding 'functional-property-substitutions d)))))
                                    (uninstantiated-where (opt (join (append insert-constraints delete-constraints where))))
-                                   ;; (uninstantiated-where ;; (parameterize ((*query-functional-properties?* #f))
-                                   ;;   (join (append insert-constraints delete-constraints where)))
                                    (new-delete (update-triples-to-quads delete uninstantiated-where fps))
                                    (new-insert (update-triples-to-quads insert uninstantiated-where fps)))
                               (values (replace-child-body-if 
@@ -125,7 +118,6 @@
                                            'WHERE `((@SubSelect (SELECT *) (WHERE ,@(join new-where))))
                                            (reverse rw)))))
                                     (update-binding 'functional-property-substitutions fps new-bindings)))))))))))
-
 
 (define query-where (make-parameter '()))
 
