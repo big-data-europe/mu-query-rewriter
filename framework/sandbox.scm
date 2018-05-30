@@ -343,17 +343,17 @@
     (list->vector
      (map (lambda (user)
             `((uri . ,(write-uri (alist-ref 'user user)))
-              (role . ,(alist-ref 'role user))
+              (role . ,(write-uri (alist-ref 'role user)))
+              (roleTitle . ,(alist-ref 'roleTitle user))
               (name . ,(rdf->json (alist-ref 'name user)))))
           (sparql-select
            (conc
             "PREFIX muauth: <http://mu.semte.ch/vocabularies/authorization/>"
             "PREFIX dct: <http://purl.org/dc/terms/>"
-            "SELECT DISTINCT ?user ?role ?name "
+            "SELECT DISTINCT ?user ?role ?roleTitle ?name "
             "WHERE { "
-            " { ?user muauth:has-role ?role }"
-            " UNION { ?user muauth:has-role/dct:title ?role }"
-            " FILTER (isLiteral(?role))"
+            " ?user muauth:hasRole ?role "
+            " OPTIONAL { ?role dct:title ?roleTitle }"
             " OPTIONAL { "
             "  { ?user dct:title ?name } "
             "  UNION { ?user foaf:name ?name } "

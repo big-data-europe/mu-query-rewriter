@@ -4,6 +4,7 @@
   (make-parameter
    `(("<SESSION>" mu-session-id uri))))
 
+;; optimized constraint is cached for unique values of these headers
 (define *optimize-constraint-cache-headers*
   (make-parameter
    '(mu-session-id mu-call-id)))
