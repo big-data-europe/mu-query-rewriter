@@ -313,29 +313,26 @@ The [mu-query-writer-sandbox](https://github.com/big-data-europe/mu-query-rewrit
 
 This section describes how to write plugins directly in Chicken Scheme. 
 
-### API
+### Procedures
 
 **[procedure]** `(define-constraint mode constraint)` 
 
 `mode` is a symbol, and can take the values `'read/write`, `'read` or `'write`
 
-`constraint` can be a string or a procedure of zero arguments returning a string.
+`constraint` can be a string or a procedure of zero arguments ("thunk") returning a string.
 
-**[parameter]** `*functional-properties*`
+### Parameters
 
-A list of IRIs (symbols) of properties which, for any given subject, can only have one value.
-
-**[parameter]** `*query-functional-properties?*
-
-#t or #f. Query the database directly for values of functional properties, when the subject is an IRI.
-
-**[parameter]** `*unique-variables*`
-
-A list of variables (symbols) which are considered unique for a single query, and therefore not rewritten.
+Most of the parameters can be set as environment variables and in the sandbox, as described above (see ./framework/settings.scm). A few, however, can only be set in the Scheme code.
 
 **[parameter]** `*headers-replacements*`
 
 List of template forms for the constraint query that will be replaced dynamically with the matching header. Each element takes the form `'(("<TEMPLATE>" header-name string))` or `'(("<TEMPLATE>" header-name uri))`. Defaults to `'(("<SESSION>" mu-session-id uri))`.
+
+**[parameter]** `*optimize-constraint-cache-headers*`
+  
+List of headers for determining the duration of the cached constraint. As resolving the constraint can be time-consuming when there are many headers replacements and functional properties, this can be important to performance. Defaults to `(*optimize-constraint-cache-headers* '(mu-session-id mu-call-id))`, which means that all calls with the same `mu-session-id` and `mu-call-id` will share the cached value.
+
 
 ### Example 
 
