@@ -25,15 +25,15 @@ When a microservice in the mu-semtech architecture (so the identifier has assign
 <table>
  <thead>
   <tr>
-   <td>Constraint</td>
-   <td>Query</td>
-   <td>Rewritten Query</td>
+   <th>Constraint</th>
+   <th>Query</th>
+   <th>Rewritten Query</th>
   </tr>
  </thead>
   <tr>
-   <th>Functional properties: <code>rdf:type</code></th>
-   <th></th>
-   <th></th>
+   <td>Functional properties: <code>rdf:type</code></td>
+   <td></td>
+   <td></td>
   </tr>
  <tr>
   <td>
@@ -146,7 +146,7 @@ WHERE {
   }
   GRAPH &lt;auth&gt; {
    &lt;session123456&gt; mu:account &lt;user4532&gt;.
-   <user4532> muauth:authorizedFor &lt;Bike&gt;
+   &lt;user4532&gt; muauth:authorizedFor &lt;Bike&gt;
   }
   VALUES (?graph23694) { (&lt;bikes&gt;) }
 }
