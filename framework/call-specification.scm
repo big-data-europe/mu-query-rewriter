@@ -84,7 +84,7 @@
                                              (*sparql-update-endpoint*)
                                              (*sparql-endpoint*)))))
                 
-                (let ((queried-annotations (and (*calculate-annotations?*) 
+                (let ((queried-annotations (and (*calculate-annotations?*) (*query-annotations?*)
                                                 (try-safely "Getting Queried Annotations" annotations-query-strings
                                                             (and annotations-query-strings
                                                                  (join
@@ -95,25 +95,27 @@
                       (log-message "~%==Queried Annotations== [~A]  ~%~A~% " (logkey) queried-annotations)
 
                 (let ((headers (append (headers->list (response-headers response))
-                                       (if (and update? (*calculate-annotations?*) (*query-annotations*))
+                                       (if (*calculate-annotations?*)
                                            `((mu-cache-annotations
                                               ,(if annotations
                                                    (string-join
                                                     (map (lambda (annotation)
                                                            (if (pair? annotation)
-                                                               (string-join (map ->string annotation))
+                                                               (string-join (map ->string 
+                                                                                 (filter (compose not sparql-variable?) 
+                                                                                         (flatten annotation))))
                                                                (->string annotation)))
                                                          annotations)
                                                     ",")
                                                    ""))
-                                             (mu-queried-cache-annotations
-                                              ,(if queried-annotations
-                                                   (string-join
-                                                    (map (lambda (pair)
-                                                           (string-join (map ->string pair)))
-                                                         queried-annotations)
-                                                    ",")
-                                                   "")))
+                                             ,@(if queried-annotations
+                                                   `((mu-queried-cache-annotations
+                                                     ,(string-join
+                                                       (map (lambda (pair)
+                                                              (string-join (map ->string pair)))
+                                                            queried-annotations)
+                                                       ",")))
+                                                   '()))
                                            '()))))
                   (log-message "~%==Results== [~A] ~%~A~%" 
                                (logkey) (substring result 0 (min 1500 (string-length result))))
