@@ -40,14 +40,14 @@
                      `((query . , (format #f "~A" rewritten-query-string)))
                      read-string)))
         (let ((t2 (current-milliseconds)))
-          (debug-message "~%[~A]  Query Time: ~Ams~%" key (- t2 t1))
+          (debug-message "~%Query Time [~A]: ~Ams~%" key (- t2 t1))
           (values result uri response (- t2 t1)))))))
 
 (define (parse key q)
   (let-values (((ut1 st1) (cpu-time)))
     (let ((result (parse-query q)))
       (let-values (((ut2 st2) (cpu-time)))
-        (debug-message "~%[~A]  Parse Time : ~Ams / ~Ams~%" 
+        (debug-message "~%Parse Time [~A]: ~Ams / ~Ams~%" 
                      key (- ut2 ut1) (- st2 st1))
         result))))
 
@@ -97,19 +97,23 @@
                 (let ((headers (append (headers->list (response-headers response))
                                        (if (and update? (*calculate-annotations?*))
                                            `((mu-cache-annotations
-                                             ,(string-join
-                                               (map (lambda (annotation)
-                                                      (if (pair? annotation)
-                                                          (string-join (map ->string annotation))
-                                                          (->string annotation)))
-                                                    annotations)
-                                               ","))
+                                              ,(if annotations
+                                                   (string-join
+                                                    (map (lambda (annotation)
+                                                           (if (pair? annotation)
+                                                               (string-join (map ->string annotation))
+                                                               (->string annotation)))
+                                                         annotations)
+                                                    ",")
+                                                   ""))
                                              (mu-queried-cache-annotations
-                                             ,(string-join
-                                               (map (lambda (pair)
-                                                      (string-join (map ->string pair)))
-                                                    queried-annotations)
-                                               ",")))
+                                              ,(if queried-annotations
+                                                   (string-join
+                                                    (map (lambda (pair)
+                                                           (string-join (map ->string pair)))
+                                                         queried-annotations)
+                                                    ",")
+                                                   "")))
                                            '()))))
                   (log-message "~%==Results== [~A] ~%~A~%" 
                                (logkey) (substring result 0 (min 1500 (string-length result))))
