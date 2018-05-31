@@ -21,13 +21,13 @@ When a microservice in the mu-semtech architecture (so the identifier has assign
 <table>
  <thead>
   <tr>
-   <th>Constraint</th>
-   <th>Query</th>
-   <th>Rewritten Query</th>
+   <td>Constraint</td>
+   <td>Query</td>
+   <td>Rewritten Query</td>
   </tr>
  </thead>
   <tr>
-   <th>Functional properties: `rdf:type`</th>
+   <th>Functional properties: rdf:type</th>
    <th></th>
    <th></th>
   </tr>
@@ -92,14 +92,14 @@ If we want to query the `?user` at rewrite time, we declare `muauth:account` a t
   </tr>
  </thead>
   <tr>
-   <th>Functional properties: `rdf:type`, `muauth:authorizedFor`</th>
-   <th></th>
-   <th></th>
+   <td>Functional properties: rdf:type, muauth:authorizedFor</td>
+   <td></td>
+   <td></td>
   </tr>
    <tr>
-   <th>Transient functional properties: `muauth:account`</th>
-   <th></th>
-   <th></th>
+   <td>Transient functional properties: muauth:account</td>
+   <td></td>
+   <td></td>
   </tr>
  <tr>
   <td>
