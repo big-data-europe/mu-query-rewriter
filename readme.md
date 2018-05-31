@@ -27,7 +27,7 @@ When a microservice in the mu-semtech architecture (so the identifier has assign
   </tr>
  </thead>
   <tr>
-   <th>Functional properties: rdf:type</th>
+   <th>Functional properties: <code>rdf:type</code></th>
    <th></th>
    <th></th>
   </tr>
@@ -92,12 +92,12 @@ If we want to query the `?user` at rewrite time, we declare `muauth:account` a t
   </tr>
  </thead>
   <tr>
-   <td>Functional properties: rdf:type, muauth:authorizedFor</td>
+    <td>Functional properties: <code>rdf:type</code>, <code>muauth:authorizedFor</code></td>
    <td></td>
    <td></td>
   </tr>
    <tr>
-   <td>Transient functional properties: muauth:account</td>
+   <td>Transient functional properties: <code>muauth:account</code></td>
    <td></td>
    <td></td>
   </tr>
@@ -153,7 +153,7 @@ WHERE {
 
 ## Running the Proxy Service
 
-The Query Rewriter runs as a proxy service between the application and the database. It exposes a SPARQL endpoint `/sparql` that accepts GET and POST requests, following the SPARQL specifications, and passes on all received headers to the database.
+The Query Rewriter runs as a proxy service between the application and the database. It exposes a SPARQL endpoint `/sparql` that accepts GET and POST requests following the SPARQL specifications, and passes on all received headers to the database.
 
 ### Configuration
 
@@ -162,10 +162,18 @@ The Query Rewriter supports the following environment variables:
 - `MU_SPARQL_ENDPOINT`: SPARQL read endpoint URL. Default: http://database:8890/sparql in Docker, and http://localhost:8890/sparql outside Docker.`.
 - `MU_SPARQL_UPDATE_ENDPOINT`: SPARQL update endpoint. Same defaults as preceding.
 - `PORT`: the port to run the application on, defaults to 8890.
-- `MESSAGE_LOGGING`: turns logging on or off.
+- `PLUGIN`: plugin filename (without '.scm' extension), to be loaded from `/config` in Docker and `./config/rewriter` locally.
+- `CACHE_QUERY_FORMS`: when "true" (default), will cache query forms. This feature is experimental (see below).
+- `CALCULATE_ANNOTATIONS`: when "true" (default), annotations will be calculated and returned in the headers.
+- `QUERY_ANNOTATIONS`: when "true" (default), variable annotations will be queried in the database.
+- `SEND_DELTAS`: when "true" and a subscribers.json file is provided, will send deltas.
+- `DEBUG`: when "true", run Scheme code interpreted.
+- `DEBUG_LOGGING`: when "true", turn on verbose debug logging (mostly timing and performance).
+- `MESSAGE_LOGGING`: turns basic logging on or off.
 - `PRINT_SPARQL_QUERIES`: when "true", print all SPARQL queries.
-- `CALCULATE_ANNOTATIONS`: when "true" (default), annotations will be calculated and returned in the headers
-- `PLUGIN`: plugin filename, must be located in the `/config` directory (in Docker).
+
+These can also be set in the plugin file using the Scheme API below.
+
 
 ### Example docker-compose file
 
@@ -287,21 +295,3 @@ WHERE {
  }
 }  "))
 ```
-
-## Parameters 
-
-The following options are supported via environment variables. 
-
-**SEND_DELTAS** "true" or "false", defaults to "false"
-
-**CALCULATE_ANNOTATIONS** "true" or "false", defaults to "false"
-
-**DEBUG_LOGGING** "true" or "false", defaults to "false"
-
-**CACHE_QUERY_FORMS** "true" or "false", defaults to "true"
-
-**REWRITE_SELECT_QUERIES** "true" or "false", defaults to "true"
-
-**REWRITE_GRAPH_STATEMENTS** "true" or "false", defaults to "true"
-
-**PLUGIN** filename (without ".scm" extension) of plugin file to be loaded from ./config/rewriter, or /config in Docker.
