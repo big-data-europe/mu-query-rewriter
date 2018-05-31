@@ -95,7 +95,7 @@
                       (log-message "~%==Queried Annotations== [~A]  ~%~A~% " (logkey) queried-annotations)
 
                 (let ((headers (append (headers->list (response-headers response))
-                                       (if (and update? (*calculate-annotations?*))
+                                       (if (and update? (*calculate-annotations?*) (*query-annotations*))
                                            `((mu-cache-annotations
                                               ,(if annotations
                                                    (string-join

@@ -73,8 +73,8 @@
 (define *calculate-annotations?* 
   (config-param "CALCULATE_ANNOTATIONS" #f))
 
-(define *calculate-potentials?* 
-  (config-param "CALCULATE_POTENTIAL_GRAPHS" #f))
+(define *query-annotations?* 
+  (config-param "QUERY_ANNOTATIONS" #f))
 
 (define *debug-logging?* (config-param "DEBUG_LOGGING" #f))
 
