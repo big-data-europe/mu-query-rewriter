@@ -1,6 +1,6 @@
 # Mu Query Rewriter
 
-The Query Rewriter is a proxy service for enriching and constraining SPARQL queries before they are sent to the database, as part of the [mu-semtech](http://mu.semte.ch) microservice architecture.
+The Query Rewriter is a proxy service for enriching and constraining SPARQL queries before they are sent to the database. It functions as an authorization service in the [mu-semtech](http://mu.semte.ch) microservice architecture, enabling in-database access control and authorization-aware caching.
 
 ## Introduction 
 
@@ -8,13 +8,13 @@ A constraint is expressed as a standard SPARQL `CONSTRUCT` query, which conceptu
 
 ![rewriter diagram](rewriter.png)
 
-The principle use case is modelling access rights directly in the data (Graph ACL), so that an incoming query is effectively run against the subset of data which the current user has permission to query or update. Using annotations (an extension to SPARQL), the Rewriter can return authorization-aware cache-keys and clear-keys to the mu-cache.
+The main use case is modeling access rights directly in the data, so that an incoming query is effectively run against the subset of data which the current user has permission to query or update. Using Annotations (see below), the Rewriter can return authorization-aware cache-keys and clear-keys to the mu-cache. When access rights can be fully resolved at rewrite-time (using functional properties and intermediate queries, see below), the rewriter can return an error signaling no access. When access can only be resolved in the database, an unauthorized query will return the empty set.
 
-A simpler use case would be using multiple graphs to model data in such a way that individual microservices do not need to be aware of the rules determining which triples are stored in which graph. 
+There are also simpler use cases, such as using multiple graphs to model data so that individual microservices do not need to be aware of the rules determining which triples are stored in which graph. 
 
-### Example
+### Examples
 
-In the following example, the constraint defines a model where bikes and cars are stored in separate graphs, and users can be authorized to see one or both of the types. `rdf:type` is declared as a "functional property" (see below).
+In the following example, the constraint defines a model where bikes and cars are stored in separate graphs, and users can be authorized to see one or both of the types. 
 
 When a microservice in the mu-semtech architecture (so the identifier has assigned a `mu-session-id`) makes the query, the rewriter will send the rewritten query the database.
 
@@ -26,6 +26,11 @@ When a microservice in the mu-semtech architecture (so the identifier has assign
    <th>Rewritten Query</th>
   </tr>
  </thead>
+  <tr>
+   <th>Functional properties: `rdf:type`</th>
+   <th></th>
+   <th></th>
+  </tr>
  <tr>
   <td>
 <pre><code>
@@ -38,8 +43,8 @@ WHERE {
       a ?type
   }
   GRAPH &lt;auth&gt; {
-   &lt;SESSION&gt; mu:account ?user.
-   ?user &lt;authFor&gt; ?type
+   &lt;SESSION&gt; muauth:account ?user.
+   ?user muauth:authorizedFor ?type
   }
   VALUES (?graph ?type){
     (&lt;cars&gt; &lt;Car&gt;)
@@ -66,8 +71,78 @@ WHERE {
        &lt;hasColor&gt; ?color.
   }
   GRAPH &lt;auth&gt; {
-   &lt;session123456&gt; mu:account ?user.
-   ?user &lt;authFor&gt; &lt;Bike&gt;
+   &lt;session123456&gt; muauth:account ?user.
+   ?user muauth:authorizedFor &lt;Bike&gt;
+  }
+  VALUES (?graph23694) { (&lt;bikes&gt;) }
+}
+</code></pre>
+  </td>
+ </tr>
+</table>
+
+If we want to query the `?user` at rewrite time, we declare `muauth:account` a transient functional property. ("Transient" means it is not cached between calls.) If the user is not authorized to see `<Bike>`s, this will be queried and known at rewrite time, and the query will fail before being sent to the database.
+
+<table>
+ <thead>
+  <tr>
+   <th>Constraint</th>
+   <th>Query</th>
+   <th>Rewritten Query</th>
+  </tr>
+ </thead>
+  <tr>
+   <th>Functional properties: `rdf:type`, `muauth:authorizedFor`</th>
+   <th></th>
+   <th></th>
+  </tr>
+   <tr>
+   <th>Transient functional properties: `muauth:account`</th>
+   <th></th>
+   <th></th>
+  </tr>
+ <tr>
+  <td>
+<pre><code>
+CONSTRUCT {
+  ?a ?b ?c
+}
+WHERE {
+  GRAPH ?graph {
+   ?a ?b ?c;
+      a ?type
+  }
+  GRAPH &lt;auth&gt; {
+   &lt;SESSION&gt; mu:account ?user.
+   ?user muauth:authorizedFor ?type
+  }
+  VALUES (?graph ?type){
+    (&lt;cars&gt; &lt;Car&gt;)
+    (&lt;bikes&gt; &lt;Bike&gt;)
+  }
+}
+</code></pre>
+  </td>
+  <td>
+<pre><code>
+SELECT *
+WHERE {
+  ?s a &lt;Bike&gt;;
+     &lt;hasColor&gt; ?color.
+}
+</code></pre>
+  </td>
+  <td>
+<pre><code>
+SELECT ?s ?color
+WHERE {
+  GRAPH ?graph23694 {
+    ?s a &lt;Bike&gt;;
+       &lt;hasColor&gt; ?color.
+  }
+  GRAPH &lt;auth&gt; {
+   &lt;session123456&gt; mu:account &lt;user4532&gt;.
+   <user4532> muauth:authorizedFor &lt;Bike&gt;
   }
   VALUES (?graph23694) { (&lt;bikes&gt;) }
 }
