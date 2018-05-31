@@ -35,6 +35,11 @@ When a microservice in the mu-semtech architecture (so the identifier has assign
    <td></td>
    <td></td>
   </tr>
+   <tr>
+   <td>Unique variables: <code>?user</code></td>
+   <td></td>
+   <td></td>
+  </tr>
  <tr>
   <td>
 <pre><code>
@@ -85,7 +90,7 @@ WHERE {
  </tr>
 </table>
 
-If we want to query the `?user` at rewrite time, we declare `muauth:account` a transient functional property. ("Transient" means it is not cached between calls.) If the user is not authorized to see `<Bike>`s, this will be queried and known at rewrite time, and the query will fail before being sent to the database.
+If we want to query the database for `?user` at rewrite time, we declare `muauth:account` to be a transient functional property. ("Transient" means it is not cached between calls.) If `muauth:authorizedFor` is also functional and the user is not authorized to see `<Bike>`s, this will be queried and known at rewrite time, and the query will fail before being sent to the database.
 
 <table>
  <thead>
@@ -105,6 +110,12 @@ If we want to query the `?user` at rewrite time, we declare `muauth:account` a t
    <td></td>
    <td></td>
   </tr>
+     <tr>
+   <td>Unique variables: <code>?user</code></td>
+   <td></td>
+   <td></td>
+  </tr>
+
  <tr>
   <td>
 <pre><code>
@@ -168,6 +179,7 @@ The Query Rewriter supports the following environment variables:
 - `PORT`: the port to run the application on, defaults to 8890.
 - `PLUGIN`: plugin filename (without '.scm' extension), to be loaded from `/config` in Docker and `./config/rewriter` locally.
 - `CACHE_QUERY_FORMS`: when "true" (default), will cache query forms. This feature is experimental (see below).
+- `QUERY_FUNCTIONAL_PROPERTIES`: when "true" (default), query the database for functional properties for known subjects.
 - `CALCULATE_ANNOTATIONS`: when "true" (default), annotations will be calculated and returned in the headers.
 - `QUERY_ANNOTATIONS`: when "true" (default), variable annotations will be queried in the database.
 - `SEND_DELTAS`: when "true" and a subscribers.json file is provided, will send deltas.
@@ -216,7 +228,17 @@ services:
 
 ## Basic Logic
 
-A constraint is expressed as a SPARQL `CONSTRUCT` statement of one triple, called the "matched triple".
+A constraint is expressed as a SPARQL `CONSTRUCT` statement of one triple, called the "matched triple". The matched triple is matched against each triple in the incoming query, and the constraint's `WHERE` clause is rewritten with each match substitution, calculating minimal dependencies between the constrained variables to simplify the rewritten query.
+
+Unique variables are only rewritten once for the whole query, regardless of dependency relationships between variables.
+
+Functional properties are unique, and if a subject has two values for a functional property in the same block, an error is signaled. When `QUERY_FUNCTIONAL_PROPERTIES` is "true", functional properties are queried in the database for known subjects.
+
+Queried properties are like functional properties but without the uniqueness restriction. For known subjects and objects, the triple is verified against the database:
+
+```
+<person123> ex:queriedProp <someval>
+```
 
 ## Annotations
 
@@ -272,6 +294,10 @@ The deltas are sent as JSON, following the format established by the [mu-delta-s
 ```
 
 ## Cache Forms
+
+The Rewriter comes with an experimental cache that caches the rewritten form of queries that are equivalent modulo full URIs and literal strings. In the current implementation, this is fairly risky, and cannot stand up to pathological (or even slightly wierd) cases. However, the speedup is considerable, and with proper precautions it is usable. A correct implementation is planned as a next step.
+
+
 
 
 
