@@ -22,7 +22,7 @@
 (define *transient-queried-properties* (make-parameter '()))
 
 (define *query-functional-properties?*
-  (config-parameter "QUERY_FUNCTIONAL_PROPERTIES" #t))
+  (config-param "QUERY_FUNCTIONAL_PROPERTIES" #t))
 
 ;; Can be a string, an s-sparql expression, 
 ;; or a thunk returning a string or an s-sparql expression.
