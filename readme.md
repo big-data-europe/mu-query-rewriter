@@ -2,6 +2,10 @@
 
 The Query Rewriter is a proxy service for enriching and constraining SPARQL queries before they are sent to the database. It functions as an authorization service in the [mu-semtech](http://mu.semte.ch) microservice architecture, enabling in-database access control and authorization-aware caching.
 
+A sandbox interface for writing constraints is provided by https://github.com/big-data-europe/mu-query-rewriter-sandbox
+
+A basic working example and testing environment is provided by https://github.com/big-data-europe/graph-acl-basics/
+
 ## Introduction 
 
 A constraint is expressed as a standard SPARQL `CONSTRUCT` query, which conceptually represents an intermediate 'constraint' graph. An incoming query is optimally rewritten to a form which, when run against the full database, is equivalent to the original query being run against the constraint graph. Constraining queries in this way allows shared logic to be abstracted almost to the database level, simplifying the logic handled by each microservice. 
@@ -193,6 +197,7 @@ services:
     image: nathanielrb/mu-graph-rewriter
     links:
       - db:database
+      - laq:laq
     environment:
       DEBUG_LOGGING: "true"
       PLUGIN: "authorization"
@@ -203,27 +208,74 @@ services:
   my-service:
     image: my/service
     links:
-      - rewriter:database
-```
-
-## Describing Constraints
-
-A constraint is a SPARQL `CONSTRUCT` statement of one triple, called the "matched triple".
-
-Write constraints have a further restriction: the graph containing the matched triple must be a variable, to ensure that update queries only insert or delete triples when the constraint succeeds:
-
-### Annotations
-
-Annotations are used to define application-specific cache-keys and clear-keys for the mu-cache. They are defined as an extension to the SPARQL 1.1 standard, and can take two forms: `@access Label` and `@access Label(?var)`. 
+      - rewriter:
+  laq: # to test deltas
+    image: flowofcontrol/list-all-requests
 
 ```
-@access All
-GRAPH ?graph {
-  @access Graph(?graph)
+
+## Basic Logic
+
+A constraint is expressed as a SPARQL `CONSTRUCT` statement of one triple, called the "matched triple".
+
+## Annotations
+
+Annotations are used to define application-specific cache-keys and clear-keys for the mu-cache. They are defined as an extension to the SPARQL 1.1 standard, and can take two forms, constant annotations: `@access Label` and variable annotations: `@access Label(?var)`. 
+
+```
+{
+ ?a ?b ?c.
+ ?a rdf:type ext:Comment.
+ {
+  @access adminComment
+  ?user muauth:hasRole <http://ex/admin>.
 }
+UNION
+{
+ ?a ?b ?c.
+ ?a rdf:type ?type.
+ VALUES ?type { ext:Route ext:Hotel }
+ {
+  @access adminObject(?type)
+  ?user muauth:hasRole <http://ex/admin>.
+ }
 ```
 
-### Limitations and Exceptions
+Two headers are returned. `mu-cache-annotations` reports constant annotations, and variable annotations along with all possible values as known at rewrite time (not querying the database). `mu-queried-cache-annotations` reports actual values of variable  annotations in the database.
+
+```
+Mu-Cache-Annotations: "adminComment,adminObject <http://mu.semte.ch/vocabularies/ext/Route> <http://mu.semte.ch/vocabularies/ext/Hotel>"
+Mu-Queried-Cache-Annotations: "adminObject <http://mu.semte.ch/vocabularies/ext/Route>,adminObject <http://mu.semte.ch/vocabularies/ext/Hotel>"
+```
+
+## Deltas
+
+When the `SEND_DELTAS` parametre is "true" and a subscribers.json file is provided (see example in ./config/rewriter/subscribers.json), deltas are sent on all update queries.
+
+The deltas are sent as JSON, following the format established by the [mu-delta-service](https://github.com/mu-semtech/mu-delta-service):
+
+```
+[
+ {
+  "graph":"http://mu.semte.ch/application",
+  "delta": {
+   "inserts":[
+     {
+      "s":"http://data-hub.toerismevlaamsbrabant.be/hotels/5B0C1AA33C7DF9000C000003",
+      "p":"http://mu.semte.ch/vocabularies/ext/addedBy",
+      "o":"http://data-hub.toerismevlaamsbrabant.be/users/5B0C193C3C7DF9000C000001"
+     }
+   ]
+  }
+ }
+]
+```
+
+## Cache Forms
+
+
+
+## Limitations and Exceptions
 
 Due to the complexity of the SPARQL 1.1 grammar, not all SPARQL queries are fully supported.
 
